@@ -1,58 +1,81 @@
 # ═══════════════════════════════════════════════
-#  smart_client.py — Angel One SmartAPI client
-#  Live LTP / candles / indicators-ku broker API bridge.
-#
-#  Setup:
-#    pip install smartapi-python pyotp
-#    Render Environment-la add pannunga:
-#      SMART_API_KEY, SMART_CLIENT_ID, SMART_PASSWORD, SMART_TOTP_SECRET
-#
-#  Credentials illa-na intha module silent-a skip agum —
-#  terminal Chartink webhook data-oda mattum work agum.
+# smart_client.py — Angel One SmartAPI Client
 # ═══════════════════════════════════════════════
-import os
 
-SMART_API_KEY     = os.environ.get("SMART_API_KEY", "")
-SMART_CLIENT_ID   = os.environ.get("SMART_CLIENT_ID", "")
-SMART_PASSWORD    = os.environ.get("SMART_PASSWORD", "")
-SMART_TOTP_SECRET = os.environ.get("SMART_TOTP_SECRET", "")
+import os
 
 _session = None
 
+SMARTAPI_KEY = os.getenv("SMARTAPI_KEY", "")
+SMARTAPI_CLIENT = os.getenv("SMARTAPI_CLIENT", "")
+SMARTAPI_PASSWORD = os.getenv("SMARTAPI_PASSWORD", "")
+SMARTAPI_TOTP = os.getenv("SMARTAPI_TOTP", "")
 
-def is_configured() -> bool:
-    return all([SMART_API_KEY, SMART_CLIENT_ID, SMART_PASSWORD, SMART_TOTP_SECRET])
+
+def is_configured():
+    return all([
+        SMARTAPI_KEY,
+        SMARTAPI_CLIENT,
+        SMARTAPI_PASSWORD,
+        SMARTAPI_TOTP
+    ])
 
 
 def login():
-    """SmartAPI login — credentials set aana mattum."""
     global _session
+
+    if _session:
+        return _session
+
     if not is_configured():
-        print("[SmartAPI] credentials not set — running without broker data")
+        print("[SmartAPI] Environment variables missing")
         return None
+
     try:
         from SmartApi import SmartConnect
         import pyotp
-        sc = SmartConnect(api_key=SMART_API_KEY)
-        totp = pyotp.TOTP(SMART_TOTP_SECRET).now()
-        data = sc.generateSession(SMART_CLIENT_ID, SMART_PASSWORD, totp)
+
+        sc = SmartConnect(api_key=SMARTAPI_KEY)
+
+        otp = pyotp.TOTP(SMARTAPI_TOTP).now()
+
+        data = sc.generateSession(
+            SMARTAPI_CLIENT,
+            SMARTAPI_PASSWORD,
+            otp
+        )
+
         if data.get("status"):
             _session = sc
-            print("[SmartAPI] login ✅")
+            print("[SmartAPI] Login Success")
             return sc
-        print("[SmartAPI] login failed:", data.get("message"))
+
+        print("[SmartAPI] Login Failed:", data)
+
     except Exception as e:
-        print("[SmartAPI] error:", e)
+        print("[SmartAPI] ERROR:", e)
+
     return None
 
 
-def get_ltp(exchange: str, symbol: str, token: str):
-    """Live LTP fetch. Example: get_ltp('NSE', 'SBIN-EQ', '3045')"""
+def get_ltp(exchange, symbol, token):
+    global _session
+
+    if _session is None:
+        login()
+
     if _session is None:
         return None
+
     try:
-        d = _session.ltpData(exchange, symbol, token)
-        return d.get("data", {}).get("ltp")
+        res = _session.ltpData(exchange, symbol, token)
+
+        if res.get("status"):
+            return res["data"]["ltp"]
+
+        print("[SmartAPI] LTP Error:", res)
+
     except Exception as e:
-        print("[SmartAPI] ltp error:", e)
-        return None
+        print("[SmartAPI] LTP Exception:", e)
+
+    return None
